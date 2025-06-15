@@ -68,7 +68,7 @@ class DiffusionConfig(PreTrainedConfig):
             within the image size. If None, no cropping is done.
         crop_is_random: Whether the crop should be random at training time (it's always a center crop in eval
             mode).
-        pretrained_backbone_weights: Pretrained weights from torchvision to initialize the backbone.
+        pretrained_backbone_weights: Pretrained weights from torchvision to initalize the backbone.
             `None` means no pretrained weights.
         use_group_norm: Whether to replace batch normalization with group normalization in the backbone.
             The group sizes are set to be about 16 (to be precise, feature_dim // 16).
@@ -81,7 +81,7 @@ class DiffusionConfig(PreTrainedConfig):
         n_groups: Number of groups used in the group norm of the Unet's convolutional blocks.
         diffusion_step_embed_dim: The Unet is conditioned on the diffusion timestep via a small non-linear
             network. This is the output dimension of that network, i.e., the embedding dimension.
-        use_film_scale_modulation: FiLM (https://huggingface.co/papers/1709.07871) is used for the Unet conditioning.
+        use_film_scale_modulation: FiLM (https://arxiv.org/abs/1709.07871) is used for the Unet conditioning.
             Bias modulation is used be default, while this parameter indicates whether to also use scale
             modulation.
         noise_scheduler_type: Name of the noise scheduler to use. Supported options: ["DDPM", "DDIM"].
@@ -99,7 +99,7 @@ class DiffusionConfig(PreTrainedConfig):
         num_inference_steps: Number of reverse diffusion steps to use at inference time (steps are evenly
             spaced). If not provided, this defaults to be the same as `num_train_timesteps`.
         do_mask_loss_for_padding: Whether to mask the loss when there are copy-padded actions. See
-            `LeRobotDataset` and `load_previous_and_future_frames` for more information. Note, this defaults
+            `LeRobotDataset` and `load_previous_and_future_frames` for mor information. Note, this defaults
             to False as the original Diffusion Policy implementation does the same.
     """
 
@@ -221,7 +221,7 @@ class DiffusionConfig(PreTrainedConfig):
         for key, image_ft in self.image_features.items():
             if image_ft.shape != first_image_ft.shape:
                 raise ValueError(
-                    f"`{key}` does not match `{first_image_key}`, but we expect all image shapes to match."
+                    f"`{key}` does not match `{first_image_key}`, but we " "expect all image shapes to match."
                 )
 
     @property

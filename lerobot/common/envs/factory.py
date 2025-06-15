@@ -17,7 +17,11 @@ import importlib
 
 import gymnasium as gym
 
-from lerobot.common.envs.configs import AlohaEnv, EnvConfig, HILEnvConfig, PushtEnv, XarmEnv
+### Import your own environment with a robot through the gymnasium ###
+import gym_myrobot
+## ##
+
+from lerobot.common.envs.configs import AlohaEnv, EnvConfig, PushtEnv, XarmEnv, MyRobotEnv ### import your env ###
 
 
 def make_env_config(env_type: str, **kwargs) -> EnvConfig:
@@ -27,8 +31,10 @@ def make_env_config(env_type: str, **kwargs) -> EnvConfig:
         return PushtEnv(**kwargs)
     elif env_type == "xarm":
         return XarmEnv(**kwargs)
-    elif env_type == "hil":
-        return HILEnvConfig(**kwargs)
+
+    ### Adding a robot so it can be used in options (lerobot/scripts/train.py --env.type=myrobot) ###
+    elif env_type == "myrobot" or env_type == "myrobot-v0":  # Додаємо новий тип
+        return MyRobotEnv(**kwargs)
     else:
         raise ValueError(f"Policy type '{env_type}' is not available.")
 
@@ -39,12 +45,12 @@ def make_env(cfg: EnvConfig, n_envs: int = 1, use_async_envs: bool = False) -> g
     Args:
         cfg (EnvConfig): the config of the environment to instantiate.
         n_envs (int, optional): The number of parallelized env to return. Defaults to 1.
-        use_async_envs (bool, optional): Whether to return an AsyncVectorEnv or a SyncVectorEnv. Defaults to
+        use_async_envs (bool, optional): Wether to return an AsyncVectorEnv or a SyncVectorEnv. Defaults to
             False.
 
     Raises:
         ValueError: if n_envs < 1
-        ModuleNotFoundError: If the requested env package is not installed
+        ModuleNotFoundError: If the requested env package is not intalled
 
     Returns:
         gym.vector.VectorEnv: The parallelized gym.env instance.
@@ -64,8 +70,17 @@ def make_env(cfg: EnvConfig, n_envs: int = 1, use_async_envs: bool = False) -> g
 
     # batched version of the env that returns an observation of shape (b, c)
     env_cls = gym.vector.AsyncVectorEnv if use_async_envs else gym.vector.SyncVectorEnv
-    env = env_cls(
-        [lambda: gym.make(gym_handle, disable_env_checker=True, **cfg.gym_kwargs) for _ in range(n_envs)]
-    )
 
+    ##########################################
+
+    if package_name == 'gym_myrobot':
+        env = env_cls(
+            [lambda: gym.make(cfg.task, disable_env_checker=True, **cfg.gym_kwargs) for _ in range(n_envs)]
+        )
+    else:
+        env = env_cls(
+            [lambda: gym.make(gym_handle, disable_env_checker=True, **cfg.gym_kwargs) for _ in range(n_envs)]
+        )
+    ##########################################
+    
     return env

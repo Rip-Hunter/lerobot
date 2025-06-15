@@ -57,7 +57,7 @@ import torch.nn.functional as F  # noqa: N812
 from torch import Tensor, nn
 from transformers import AutoTokenizer
 
-from lerobot.common.constants import ACTION, OBS_STATE
+from lerobot.common.constants import ACTION, OBS_ROBOT
 from lerobot.common.policies.normalize import Normalize, Unnormalize
 from lerobot.common.policies.pi0.configuration_pi0 import PI0Config
 from lerobot.common.policies.pi0.paligemma_with_expert import (
@@ -271,7 +271,7 @@ class PI0Policy(PreTrainedPolicy):
         self.eval()
 
         if self.config.adapt_to_pi_aloha:
-            batch[OBS_STATE] = self._pi_aloha_decode_state(batch[OBS_STATE])
+            batch[OBS_ROBOT] = self._pi_aloha_decode_state(batch[OBS_ROBOT])
 
         batch = self.normalize_inputs(batch)
 
@@ -300,10 +300,10 @@ class PI0Policy(PreTrainedPolicy):
             self._action_queue.extend(actions.transpose(0, 1))
         return self._action_queue.popleft()
 
-    def forward(self, batch: dict[str, Tensor], noise=None, time=None) -> tuple[Tensor, dict[str, Tensor]]:
+    def forward(self, batch: dict[str, Tensor], noise=None, time=None) -> dict[str, Tensor]:
         """Do a full training forward pass to compute the loss"""
         if self.config.adapt_to_pi_aloha:
-            batch[OBS_STATE] = self._pi_aloha_decode_state(batch[OBS_STATE])
+            batch[OBS_ROBOT] = self._pi_aloha_decode_state(batch[OBS_ROBOT])
             batch[ACTION] = self._pi_aloha_encode_actions_inv(batch[ACTION])
 
         batch = self.normalize_inputs(batch)
@@ -313,7 +313,7 @@ class PI0Policy(PreTrainedPolicy):
         state = self.prepare_state(batch)
         lang_tokens, lang_masks = self.prepare_language(batch)
         actions = self.prepare_action(batch)
-        actions_is_pad = batch.get("action_is_pad")
+        actions_is_pad = batch.get("actions_id_pad")
 
         loss_dict = {}
         losses = self.model.forward(images, img_masks, lang_tokens, lang_masks, state, actions, noise, time)
@@ -328,12 +328,12 @@ class PI0Policy(PreTrainedPolicy):
         losses = losses[:, :, : self.config.max_action_dim]
         loss_dict["losses_after_rm_padding"] = losses.clone()
 
-        # For backward pass
         loss = losses.mean()
+        # For backward pass
+        loss_dict["loss"] = loss
         # For logging
         loss_dict["l2_loss"] = loss.item()
-
-        return loss, loss_dict
+        return loss_dict
 
     def prepare_images(self, batch):
         """Apply Pi0 preprocessing to the images, like resizing to 224x224 and padding to keep aspect ratio, and
@@ -357,7 +357,7 @@ class PI0Policy(PreTrainedPolicy):
             if self.config.resize_imgs_with_padding is not None:
                 img = resize_with_pad(img, *self.config.resize_imgs_with_padding, pad_value=0)
 
-            # Normalize from range [0,1] to [-1,1] as expected by siglip
+            # Normalize from range [0,1] to [-1,1] as expacted by siglip
             img = img * 2.0 - 1.0
 
             bsize = img.shape[0]
@@ -380,7 +380,23 @@ class PI0Policy(PreTrainedPolicy):
 
     def prepare_language(self, batch) -> tuple[Tensor, Tensor]:
         """Tokenize the text input"""
-        device = batch[OBS_STATE].device
+        device = batch[OBS_ROBOT].device
+
+        
+        ###############################################
+        ### Expanding the task to the entire batch. ### 
+        ###        !!! This may be wrong. !!!       ###
+        ###############################################
+
+
+        batch_size = batch[OBS_ROBOT].shape[0]
+        
+        if "task" not in batch or len(batch["task"]) != batch_size:
+            # Якщо завдання не вказано, встановлюємо стандартне для всього батчу
+            batch["task"] = ["Підніми кубик"] * batch_size
+
+        #######################################################
+
         tasks = batch["task"]
 
         # PaliGemma prompt has to end with a new line
@@ -427,7 +443,7 @@ class PI0Policy(PreTrainedPolicy):
 
     def prepare_state(self, batch):
         """Pad state"""
-        state = pad_vector(batch[OBS_STATE], self.config.max_state_dim)
+        state = pad_vector(batch[OBS_ROBOT], self.config.max_state_dim)
         return state
 
     def prepare_action(self, batch):

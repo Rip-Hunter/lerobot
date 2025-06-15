@@ -17,8 +17,8 @@
 """Implementation of Finetuning Offline World Models in the Real World.
 
 The comments in this code may sometimes refer to these references:
-    TD-MPC paper: Temporal Difference Learning for Model Predictive Control (https://huggingface.co/papers/2203.04955)
-    FOWM paper: Finetuning Offline World Models in the Real World (https://huggingface.co/papers/2310.16029)
+    TD-MPC paper: Temporal Difference Learning for Model Predictive Control (https://arxiv.org/abs/2203.04955)
+    FOWM paper: Finetuning Offline World Models in the Real World (https://arxiv.org/abs/2310.16029)
 """
 
 # ruff: noqa: N806
@@ -35,7 +35,7 @@ import torch.nn as nn
 import torch.nn.functional as F  # noqa: N812
 from torch import Tensor
 
-from lerobot.common.constants import OBS_ENV_STATE, OBS_STATE
+from lerobot.common.constants import OBS_ENV, OBS_ROBOT
 from lerobot.common.policies.normalize import Normalize, Unnormalize
 from lerobot.common.policies.pretrained import PreTrainedPolicy
 from lerobot.common.policies.tdmpc.configuration_tdmpc import TDMPCConfig
@@ -122,7 +122,7 @@ class TDMPCPolicy(PreTrainedPolicy):
 
         # When the action queue is depleted, populate it again by querying the policy.
         if len(self._queues["action"]) == 0:
-            batch = {key: torch.stack(list(self._queues[key]), dim=1) for key in batch if key in self._queues}
+            batch = {key: torch.stack(list(self._queues[key]), dim=1) for key in batch}
 
             # Remove the time dimensions as it is not handled yet.
             for key in batch:
@@ -302,7 +302,7 @@ class TDMPCPolicy(PreTrainedPolicy):
             G -= running_discount * self.config.uncertainty_regularizer_coeff * terminal_values.std(0)
         return G
 
-    def forward(self, batch: dict[str, Tensor]) -> tuple[Tensor, dict]:
+    def forward(self, batch: dict[str, Tensor]) -> dict[str, Tensor | float]:
         """Run the batch through the model and compute the loss.
 
         Returns a dictionary with loss as a tensor, and other information as native floats.
@@ -495,6 +495,7 @@ class TDMPCPolicy(PreTrainedPolicy):
                 "Q_value_loss": q_value_loss.item(),
                 "V_value_loss": v_value_loss.item(),
                 "pi_loss": pi_loss.item(),
+                "loss": loss,
                 "sum_loss": loss.item() * self.config.horizon,
             }
         )
@@ -504,7 +505,7 @@ class TDMPCPolicy(PreTrainedPolicy):
             if isinstance(batch[key], torch.Tensor) and batch[key].ndim > 1:
                 batch[key] = batch[key].transpose(1, 0)
 
-        return loss, info
+        return info
 
     def update(self):
         """Update the target model's parameters with an EMA step."""
@@ -594,9 +595,9 @@ class TDMPCTOLD(nn.Module):
 
         self.apply(_apply_fn)
         for m in [self._reward, *self._Qs]:
-            assert isinstance(m[-1], nn.Linear), (
-                "Sanity check. The last linear layer needs 0 initialization on weights."
-            )
+            assert isinstance(
+                m[-1], nn.Linear
+            ), "Sanity check. The last linear layer needs 0 initialization on weights."
             nn.init.zeros_(m[-1].weight)
             nn.init.zeros_(m[-1].bias)  # this has already been done, but keep this line here for good measure
 
@@ -753,9 +754,9 @@ class TDMPCObservationEncoder(nn.Module):
                 )
             )
         if self.config.env_state_feature:
-            feat.append(self.env_state_enc_layers(obs_dict[OBS_ENV_STATE]))
+            feat.append(self.env_state_enc_layers(obs_dict[OBS_ENV]))
         if self.config.robot_state_feature:
-            feat.append(self.state_enc_layers(obs_dict[OBS_STATE]))
+            feat.append(self.state_enc_layers(obs_dict[OBS_ROBOT]))
         return torch.stack(feat, dim=0).mean(0)
 
 

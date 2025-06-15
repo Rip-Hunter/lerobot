@@ -61,21 +61,21 @@ import einops
 import gymnasium as gym
 import numpy as np
 import torch
-from termcolor import colored
 from torch import Tensor, nn
 from tqdm import trange
 
 from lerobot.common.envs.factory import make_env
-from lerobot.common.envs.utils import add_envs_task, check_env_attributes_and_types, preprocess_observation
+from lerobot.common.envs.utils import preprocess_observation
+from lerobot.common.logger import log_output_dir
 from lerobot.common.policies.factory import make_policy
 from lerobot.common.policies.pretrained import PreTrainedPolicy
 from lerobot.common.policies.utils import get_device_from_parameters
 from lerobot.common.utils.io_utils import write_video
-from lerobot.common.utils.random_utils import set_seed
 from lerobot.common.utils.utils import (
     get_safe_torch_device,
     init_logging,
     inside_slurm,
+    set_global_seed,
 )
 from lerobot.configs import parser
 from lerobot.configs.eval import EvalPipelineConfig
@@ -94,8 +94,8 @@ def rollout(
     data will probably need to be discarded (for environments that aren't the first one to be done).
 
     The return dictionary contains:
-        (optional) "observation": A dictionary of (batch, sequence + 1, *) tensors mapped to observation
-            keys. NOTE that this has an extra sequence element relative to the other keys in the
+        (optional) "observation": A a dictionary of (batch, sequence + 1, *) tensors mapped to observation
+            keys. NOTE the that this has an extra sequence element relative to the other keys in the
             dictionary. This is because an extra observation is included for after the environment is
             terminated or truncated.
         "action": A (batch, sequence, action_dim) tensor of actions applied based on the observations (not
@@ -124,6 +124,10 @@ def rollout(
 
     # Reset the policy and environments.
     policy.reset()
+
+    if hasattr(policy, "use_ema_modules"):
+        policy.use_ema_modules()
+
     observation, info = env.reset(seed=seeds)
     if render_callback is not None:
         render_callback(env)
@@ -144,20 +148,13 @@ def rollout(
         disable=inside_slurm(),  # we dont want progress bar when we use slurm, since it clutters the logs
         leave=False,
     )
-    check_env_attributes_and_types(env)
     while not np.all(done):
         # Numpy array to tensor and changing dictionary keys to LeRobot policy format.
         observation = preprocess_observation(observation)
         if return_observations:
             all_observations.append(deepcopy(observation))
 
-        observation = {
-            key: observation[key].to(device, non_blocking=device.type == "cuda") for key in observation
-        }
-
-        # Infer "task" from attributes of environments.
-        # TODO: works with SyncVectorEnv but not AsyncVectorEnv
-        observation = add_envs_task(env, observation)
+        observation = {key: observation[key].to(device, non_blocking=True) for key in observation}
 
         with torch.inference_mode():
             action = policy.select_action(observation)
@@ -458,30 +455,30 @@ def _compile_episode_data(
 
 
 @parser.wrap()
-def eval_main(cfg: EvalPipelineConfig):
+def eval(cfg: EvalPipelineConfig):
     logging.info(pformat(asdict(cfg)))
 
     # Check device is available
-    device = get_safe_torch_device(cfg.policy.device, log=True)
+    device = get_safe_torch_device(cfg.device, log=True)
 
     torch.backends.cudnn.benchmark = True
     torch.backends.cuda.matmul.allow_tf32 = True
-    set_seed(cfg.seed)
+    set_global_seed(cfg.seed)
 
-    logging.info(colored("Output dir:", "yellow", attrs=["bold"]) + f" {cfg.output_dir}")
+    log_output_dir(cfg.output_dir)
 
     logging.info("Making environment.")
     env = make_env(cfg.env, n_envs=cfg.eval.batch_size, use_async_envs=cfg.eval.use_async_envs)
 
     logging.info("Making policy.")
-
     policy = make_policy(
         cfg=cfg.policy,
+        device=device,
         env_cfg=cfg.env,
     )
     policy.eval()
 
-    with torch.no_grad(), torch.autocast(device_type=device.type) if cfg.policy.use_amp else nullcontext():
+    with torch.no_grad(), torch.autocast(device_type=device.type) if cfg.use_amp else nullcontext():
         info = eval_policy(
             env,
             policy,
@@ -503,4 +500,4 @@ def eval_main(cfg: EvalPipelineConfig):
 
 if __name__ == "__main__":
     init_logging()
-    eval_main()
+    eval()
