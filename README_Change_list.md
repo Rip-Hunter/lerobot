@@ -60,7 +60,7 @@
 - [**Folder**](pi0/)
 ---
 - Сhanged the model configuration file to suit the characteristics of my robot
-- [**Folder**](pi0/config.json)
+- [**File**](pi0/config.json)
 
 </details>
 
