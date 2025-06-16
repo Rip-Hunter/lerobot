@@ -22,10 +22,12 @@
 [![Discord](https://dcbadge.vercel.app/api/server/C5P34WJ68S?style=flat)](https://discord.gg/s3KuuzsPFb)
  </div>
  -->
+<br/>
 
 > ⚠️ **Note:** This repository is a fork of the original [**Lerobot**](https://github.com/huggingface/lerobot), modified to allow for building and training custom robots. All changes and instructions can be viewed [**here**](README_Change_list.md)
 
 
+<br/>
 <br/>
 
 <h3 align="center">
